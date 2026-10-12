@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Download } from 'lucide-react';
 import { TradePlaybookEntry } from '../types/market';
 
 interface RoadmapPlaybookProps {
@@ -48,6 +49,68 @@ export const RoadmapPlaybook: React.FC<RoadmapPlaybookProps> = ({
       lesson,
     });
     setIsModalOpen(false);
+  };
+
+  const handleDownloadCSV = () => {
+    // Export user's completed trade journal entries for external analysis
+    const completedTrades = entries.filter((t) => t.status !== 'OPEN');
+    const targetTrades = completedTrades.length > 0 ? completedTrades : entries;
+
+    if (targetTrades.length === 0) {
+      return;
+    }
+
+    const headers = [
+      'Trade ID',
+      'Symbol',
+      'Strategy',
+      'Entry Date',
+      'Timeframe',
+      'Entry Price (INR)',
+      'Stop Loss (INR)',
+      'Target Price (INR)',
+      'Position Size',
+      'Capital Deployed (INR)',
+      'Risk Amount (INR)',
+      'Status',
+      'Realized/Current PnL (INR)',
+      'Emotional State',
+      'Key Lesson & Notes',
+    ];
+
+    const csvRows = [
+      headers.join(','),
+      ...targetTrades.map((t) =>
+        [
+          `"${t.id}"`,
+          `"${t.symbol}"`,
+          `"${t.strategyName}"`,
+          `"${t.entryDate}"`,
+          `"${t.timeframe}"`,
+          t.entryPrice,
+          t.stopLoss,
+          t.target,
+          `"${t.positionSize}"`,
+          t.capitalDeployed,
+          t.riskAmount,
+          `"${t.status}"`,
+          t.currentPnL,
+          `"${t.emotion}"`,
+          `"${(t.lesson || '').replace(/"/g, '""')}"`,
+        ].join(',')
+      ),
+    ];
+
+    const csvContent = '\uFEFF' + csvRows.join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `stockops_trade_journal_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const ROADMAP_WEEKS = [
@@ -211,16 +274,27 @@ export const RoadmapPlaybook: React.FC<RoadmapPlaybookProps> = ({
       {activeSection === 'journal' ? (
         /* Journal & Paper Trades View */
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <h3 className="text-sm font-bold text-white">
               Codified Trades: Setup → Entry → Stop → Target → Emotion → Lesson
             </h3>
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-colors"
-            >
-              + Log New Trade
-            </button>
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={handleDownloadCSV}
+                disabled={entries.length === 0}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                title="Download completed trade journal entries as CSV for external analysis"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Download CSV</span>
+              </button>
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-colors"
+              >
+                + Log New Trade
+              </button>
+            </div>
           </div>
 
           {entries.length === 0 ? (

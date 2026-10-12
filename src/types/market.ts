@@ -154,3 +154,89 @@ export interface TradePlaybookEntry {
   emotion: 'Disciplined' | 'Cautious' | 'Aggressive' | 'Neutral';
   lesson: string;
 }
+
+export interface BacktestTrade {
+  id: string;
+  tradeNumber: number;
+  entryDate: string;
+  exitDate: string;
+  entrySpot: number;
+  exitSpot: number;
+  legsDescription: string;
+  capitalCommitted: number;
+  realizedPnL: number;
+  roiPercent: number;
+  exitReason: 'TARGET_HIT' | 'SL_HIT' | 'EXPIRED';
+}
+
+export interface BacktestDailyPoint {
+  day: number;
+  date: string;
+  spotPrice: number;
+  cumulativePnL: number;
+  portfolioEquity: number;
+  drawdownPercent: number;
+}
+
+export interface BacktestReport {
+  symbol: string;
+  strategyId: string;
+  strategyName: string;
+  periodDays: number;
+  initialCapital: number;
+  finalEquity: number;
+  totalPnL: number;
+  roiPercent: number;
+  benchmarkReturnPercent: number;
+  winRate: number;
+  totalTrades: number;
+  winTrades: number;
+  lossTrades: number;
+  maxDrawdown: number;
+  maxDrawdownPercent: number;
+  profitFactor: number;
+  sharpeRatio: number;
+  dailyPoints: BacktestDailyPoint[];
+  trades: BacktestTrade[];
+}
+
+export interface AlgoFactorCheck {
+  factor: string;
+  weight: number;
+  score: number;
+  passed: boolean;
+  value: string;
+}
+
+export interface AlgoSignal {
+  id: string;
+  symbol: string;
+  instrumentName: string;
+  isOptionContract: boolean;
+  contractCallOrPut?: 'CE' | 'PE';
+  strike?: number;
+  expiryDate?: string;
+  optionLtp?: number;
+  underlyingSpot: number;
+  signalType: 'STRONG_BUY_CALL' | 'STRONG_BUY_PUT' | 'STRONG_BULL_SPREAD' | 'STRONG_BEAR_SPREAD' | 'STRONG_IRON_CONDOR';
+  actionLabel: string;
+  patternName: string;
+  algoConfidenceScore: number; // 0 - 100
+  timeframe: '5m Intraday' | '15m Swing' | '1D Positional';
+  entryPrice: number;
+  stopLossPrice: number;
+  target1: number;
+  target2: number;
+  target3: number;
+  riskReward: string;
+  invalidationTrigger: string;
+  capitalRequired: number;
+  recommendedLots: number;
+  maxRiskAmount: number;
+  projectedProfit: number;
+  executionTrigger: string;
+  checklist: AlgoFactorCheck[];
+  timestamp: string;
+}
+
+

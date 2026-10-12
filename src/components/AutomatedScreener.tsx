@@ -11,6 +11,7 @@ interface AutomatedScreenerProps {
   onSelectSetup: (setup: AutomatedSetup) => void;
   onOpenPayoff: (setup: AutomatedSetup) => void;
   onExecutePaperTrade: (setup: AutomatedSetup) => void;
+  onBacktestSetup?: (setup: AutomatedSetup) => void;
 }
 
 export const AutomatedScreener: React.FC<AutomatedScreenerProps> = ({
@@ -22,6 +23,7 @@ export const AutomatedScreener: React.FC<AutomatedScreenerProps> = ({
   onSelectSetup,
   onOpenPayoff,
   onExecutePaperTrade,
+  onBacktestSetup,
 }) => {
   const [filterView, setFilterView] = useState<string>('ALL');
   const [filterTimeframe, setFilterTimeframe] = useState<string>('ALL');
@@ -272,9 +274,19 @@ export const AutomatedScreener: React.FC<AutomatedScreenerProps> = ({
                 </button>
 
                 <div className="flex items-center gap-2">
+                  {onBacktestSetup && (
+                    <button
+                      onClick={() => onBacktestSetup(setup)}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-500/30 text-xs font-semibold transition-colors"
+                      title="Backtest this setup against historical volatility"
+                    >
+                      Backtest 30D
+                    </button>
+                  )}
+
                   <button
                     onClick={() => onOpenPayoff(setup)}
-                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition-colors"
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition-colors"
                   >
                     Payoff Graph
                   </button>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useTransition } from 'react';
-import { StockQuote, StrategyLeg, AutomatedSetup, TradePlaybookEntry } from './types/market';
+import { StockQuote, StrategyLeg, AutomatedSetup, TradePlaybookEntry, AlgoSignal } from './types/market';
 import { INDIAN_INSTRUMENTS, generateCandles, generateOptionChain, getStrikeStep } from './data/indianMarketData';
 import { scanMarketOpportunities } from './utils/patternScanner';
 import { PRESET_STRATEGIES } from './utils/strategyEngine';
@@ -11,6 +11,8 @@ import { StrategyBuilder } from './components/StrategyBuilder';
 import { AutomatedScreener } from './components/AutomatedScreener';
 import { RoadmapPlaybook } from './components/RoadmapPlaybook';
 import { CapitalRiskCalculator } from './components/CapitalRiskCalculator';
+import { BacktestTab } from './components/BacktestTab';
+import { AlgoSignalsTab } from './components/AlgoSignalsTab';
 
 export default function App() {
   const [instruments, setInstruments] = useState<StockQuote[]>(INDIAN_INSTRUMENTS);
@@ -93,6 +95,40 @@ export default function App() {
       emotion: 'Disciplined',
       lesson: 'Harvesting elevated theta during mid-week consolidation.',
     },
+    {
+      id: 'trade-init-3',
+      symbol: 'RELIANCE',
+      strategyName: 'Bull Call Spread (Debit)',
+      entryDate: '08-Oct-2024',
+      timeframe: '15m Swing',
+      entryPrice: 2940,
+      stopLoss: 2915,
+      target: 2995,
+      positionSize: '1 Lot (250 Qty)',
+      capitalDeployed: 32500,
+      riskAmount: 6250,
+      status: 'TARGET_HIT',
+      currentPnL: 13750,
+      emotion: 'Disciplined',
+      lesson: 'Target 1 hit at resistance 2995. Trailed stop loss to protect accumulated gains.',
+    },
+    {
+      id: 'trade-init-4',
+      symbol: 'TCS',
+      strategyName: 'Bull Put Spread (Credit)',
+      entryDate: '04-Oct-2024',
+      timeframe: '1D Positional',
+      entryPrice: 4180,
+      stopLoss: 4120,
+      target: 4260,
+      positionSize: '1 Lot (175 Qty)',
+      capitalDeployed: 48000,
+      riskAmount: 5200,
+      status: 'CLOSED',
+      currentPnL: 8400,
+      emotion: 'Cautious',
+      lesson: 'Closed early ahead of quarterly earnings report to eliminate binary event risk.',
+    },
   ]);
 
   // Live real-time tick simulator (fluctuates NSE quotes realistically)
@@ -164,6 +200,14 @@ export default function App() {
     });
   };
 
+  // Open backtest for selected setup
+  const handleBacktestSetup = (setup: AutomatedSetup) => {
+    setSelectedSymbol(setup.symbol);
+    startTransition(() => {
+      setActiveTab('backtest');
+    });
+  };
+
   // Execute paper trade from screener
   const handleExecutePaperTradeFromScreener = (setup: AutomatedSetup) => {
     const newEntry: TradePlaybookEntry = {
@@ -209,6 +253,45 @@ export default function App() {
     };
     setPlaybookEntries((prev) => [newEntry, ...prev]);
     showNotification(`Strategy executed in Playbook Journal: ${name}`);
+  };
+
+  // Select signal to view on chart
+  const handleSelectSignalForChart = (signal: AlgoSignal) => {
+    setSelectedSymbol(signal.symbol);
+    startTransition(() => {
+      setActiveTab('charts');
+    });
+  };
+
+  // Execute algo trade directly into playbook journal
+  const handleExecuteAlgoTrade = (signal: AlgoSignal) => {
+    const newEntry: TradePlaybookEntry = {
+      id: `algo-trade-${Date.now()}`,
+      symbol: signal.symbol,
+      strategyName: `${signal.actionLabel} (${signal.algoConfidenceScore}% Algo)`,
+      entryDate: new Date().toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }),
+      timeframe: signal.timeframe,
+      entryPrice: signal.entryPrice,
+      stopLoss: signal.stopLossPrice,
+      target: signal.target1,
+      positionSize: `${signal.recommendedLots} Lot(s)`,
+      capitalDeployed: signal.capitalRequired,
+      riskAmount: signal.maxRiskAmount,
+      status: 'OPEN',
+      currentPnL: 0,
+      emotion: 'Disciplined',
+      lesson: `Algo 80%+ Confirmed: ${signal.patternName}. Invalidation: ${signal.invalidationTrigger}`,
+    };
+    setPlaybookEntries((prev) => [newEntry, ...prev]);
+    showNotification(`Algo Trade Executed: ${signal.actionLabel} (${signal.recommendedLots} Lots)`);
+  };
+
+  // Backtest signal across 30 days
+  const handleBacktestSignal = (signal: AlgoSignal) => {
+    setSelectedSymbol(signal.symbol);
+    startTransition(() => {
+      setActiveTab('backtest');
+    });
   };
 
   // Close simulated trade
@@ -275,10 +358,24 @@ export default function App() {
             onSelectSetup={handleSelectSetup}
             onOpenPayoff={handleOpenPayoff}
             onExecutePaperTrade={handleExecutePaperTradeFromScreener}
+            onBacktestSetup={handleBacktestSetup}
           />
         )}
 
-        {/* TAB 2: Interactive Candlestick Charts & Technicals */}
+        {/* TAB 2: Algo Radar (80%+ Strong Technique Scanner) */}
+        {activeTab === 'algo-signals' && (
+          <AlgoSignalsTab
+            instruments={instruments}
+            selectedSymbol={selectedSymbol}
+            onSelectSymbol={setSelectedSymbol}
+            userCapital={userCapital}
+            onSelectSignalForChart={handleSelectSignalForChart}
+            onExecuteAlgoTrade={handleExecuteAlgoTrade}
+            onBacktestSignal={handleBacktestSignal}
+          />
+        )}
+
+        {/* TAB 3: Interactive Candlestick Charts & Technicals */}
         {activeTab === 'charts' && (
           <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-xl p-4">
@@ -372,7 +469,17 @@ export default function App() {
           />
         )}
 
-        {/* TAB 5: StockOps 90-Day Playbook & Paper Trading Journal */}
+        {/* TAB 5: 30-Day Historical Volatility Backtest */}
+        {activeTab === 'backtest' && (
+          <BacktestTab
+            instruments={instruments}
+            selectedSymbol={selectedSymbol}
+            onSelectSymbol={setSelectedSymbol}
+            userCapital={userCapital}
+          />
+        )}
+
+        {/* TAB 6: StockOps 90-Day Playbook & Paper Trading Journal */}
         {activeTab === 'playbook' && (
           <RoadmapPlaybook
             entries={playbookEntries}

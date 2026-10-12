@@ -43,6 +43,14 @@ export const TopNav: React.FC<TopNavProps> = ({
           Auto Scanner
         </button>
         <button
+          onClick={() => onTabChange('algo-signals')}
+          className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 ${
+            activeTab === 'algo-signals' ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400' : ''
+          }`}
+        >
+          Algo Radar (80%+)
+        </button>
+        <button
           onClick={() => onTabChange('charts')}
           className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 ${
             activeTab === 'charts' ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400' : ''
@@ -64,7 +72,15 @@ export const TopNav: React.FC<TopNavProps> = ({
             activeTab === 'strategy-builder' ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400' : ''
           }`}
         >
-          Strategy Payoff Builder
+          Strategy Payoff
+        </button>
+        <button
+          onClick={() => onTabChange('backtest')}
+          className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 ${
+            activeTab === 'backtest' ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400' : ''
+          }`}
+        >
+          Backtest
         </button>
         <button
           onClick={() => onTabChange('playbook')}
