@@ -1,0 +1,6 @@
+{
+  "name": "StockOps - Indian Market & Options Trading Terminal",
+  "description": "Comprehensive Indian stock & options trading platform with automated pattern scanning, multi-leg strategy payoff charts, Black-Scholes Greeks, real-time NSE/BSE feeds, and systematic risk playbooks based on the StockOps 90-day framework.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
