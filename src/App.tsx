@@ -14,6 +14,10 @@ import { CapitalRiskCalculator } from './components/CapitalRiskCalculator';
 import { BacktestTab } from './components/BacktestTab';
 import { AlgoSignalsTab } from './components/AlgoSignalsTab';
 import { MasterAlgoTab } from './components/MasterAlgoTab';
+import { DeepAnalysisTab } from './components/DeepAnalysisTab';
+import { HistoricalBacktest } from './components/HistoricalBacktest';
+import { Analysis, DataSource, SOURCE_LABEL, api, mergeQuotes, toAppCandles } from './api/stockopsApi';
+import { Candle } from './types/market';
 
 export default function App() {
   const [instruments, setInstruments] = useState<StockQuote[]>(INDIAN_INSTRUMENTS);
@@ -27,15 +31,79 @@ export default function App() {
 
   const [, startTransition] = useTransition();
 
+  // ---- Python analysis engine (backend/) connection ----
+  const [backend, setBackend] = useState<{ online: boolean; source: DataSource | null }>({ online: false, source: null });
+  const [realCandles, setRealCandles] = useState<Candle[] | null>(null);
+  const backendRef = React.useRef(false);
+  backendRef.current = backend.online;
+
+  // Health check: retry every 15s while offline, every 60s while online
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const check = async () => {
+      try {
+        const h = await api.health();
+        if (!cancelled) setBackend({ online: true, source: h.liveSource });
+      } catch {
+        if (!cancelled) setBackend({ online: false, source: null });
+      }
+      if (!cancelled) timer = setTimeout(check, backendRef.current ? 60000 : 15000);
+    };
+    check();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, []);
+
+  // Real quotes + indicators from the engine (refresh every 60s when auto-refresh is on)
+  useEffect(() => {
+    if (!backend.online) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const q = await api.quotes();
+        if (!cancelled && q.length) setInstruments((prev) => mergeQuotes(prev, q));
+      } catch {
+        /* keep last values */
+      }
+    };
+    load();
+    if (!isLiveTicking) return () => { cancelled = true; };
+    const id = setInterval(load, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [backend.online, isLiveTicking]);
+
+  // Real candles for the chart tab
+  useEffect(() => {
+    if (!backend.online) {
+      setRealCandles(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .history(selectedSymbol, timeframe, 60)
+      .then((h) => !cancelled && setRealCandles(toAppCandles(h.candles, timeframe)))
+      .catch(() => !cancelled && setRealCandles(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [backend.online, selectedSymbol, timeframe]);
+
   // Find currently selected stock/index
   const currentInstrument = useMemo(() => {
     return instruments.find((i) => i.symbol === selectedSymbol) || instruments[0];
   }, [instruments, selectedSymbol]);
 
   // Generate candles for current stock and timeframe
-  const candles = useMemo(() => {
+  const simulatedCandles = useMemo(() => {
     return generateCandles(currentInstrument, timeframe);
   }, [currentInstrument.symbol, timeframe, currentInstrument.price]);
+  const candles = realCandles && realCandles.length ? realCandles : simulatedCandles;
 
   // Generate option chain for current stock
   const optionChain = useMemo(() => {
@@ -138,7 +206,8 @@ export default function App() {
 
   // Live real-time tick simulator (fluctuates NSE quotes realistically)
   useEffect(() => {
-    if (!isLiveTicking) return;
+    // Random micro-ticks only when the real-data engine is offline
+    if (!isLiveTicking || backend.online) return;
 
     const interval = setInterval(() => {
       setInstruments((prev) =>
@@ -162,7 +231,7 @@ export default function App() {
     }, 2800);
 
     return () => clearInterval(interval);
-  }, [isLiveTicking]);
+  }, [isLiveTicking, backend.online]);
 
   // Update open paper trades PnL whenever current price moves
   useEffect(() => {
@@ -356,6 +425,49 @@ export default function App() {
     showNotification(`Added ${leg.action} ${leg.strike} ${leg.type} to Strategy Builder.`);
   };
 
+  // Log a Deep Analysis trade plan into the playbook journal
+  const handleLogAnalysisPlan = (a: Analysis) => {
+    const p = a.tradePlan;
+    if (p.direction === 'none' || p.entry == null || p.stop == null || !p.targets) return;
+    const newEntry: TradePlaybookEntry = {
+      id: `analysis-${Date.now()}`,
+      symbol: a.symbol,
+      strategyName: `${p.direction === 'long' ? 'Long' : 'Short'} · ${a.confluence.verdict} (${a.confluence.score.toFixed(0)})`,
+      entryDate: new Date().toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }),
+      timeframe: a.interval === '1D' ? '1D Positional' : `${a.interval} Swing`,
+      entryPrice: p.entry,
+      stopLoss: p.stop,
+      target: p.targets[0],
+      positionSize: p.lots ? `${p.lots} Lot(s) (${p.quantity} Qty)` : `${p.quantity} Qty`,
+      capitalDeployed: Math.round(p.notional ?? 0),
+      riskAmount: Math.round((p.riskPerShare ?? 0) * (p.quantity ?? 0)),
+      status: 'OPEN',
+      currentPnL: 0,
+      emotion: 'Disciplined',
+      lesson: `Grade ${p.grade}, checklist ${p.checklistPassed}/${p.checklist.length}. ${a.regime.title}; ${a.stage.stage} stage. ${p.entryTrigger ?? ''}`,
+      tags: ['Deep Analysis', ...a.setups.filter((s) => s.active && s.bias !== 'neutral').map((s) => s.name).slice(0, 2)],
+    };
+    setPlaybookEntries((prev) => [newEntry, ...prev]);
+    showNotification(`Trade plan logged: ${a.symbol} ${p.direction.toUpperCase()} (grade ${p.grade})`);
+  };
+
+  // Open an engine-recommended option strategy in the payoff builder
+  const handleOpenStrategy = (strategyId: string, symbol: string) => {
+    const preset = PRESET_STRATEGIES.find((p) => p.id === strategyId);
+    const inst = instruments.find((i) => i.symbol === symbol);
+    if (!preset || !inst) {
+      showNotification('That strategy is not available in the payoff builder.');
+      return;
+    }
+    const step = getStrikeStep(inst.symbol, inst.price);
+    const atm = Math.round(inst.price / step) * step;
+    setSelectedSymbol(symbol);
+    setStrategyLegs(preset.legsGenerator(inst.price, inst.lotSize, atm, step, 'NEXT-EXPIRY'));
+    startTransition(() => setActiveTab('strategy-builder'));
+    window.scrollTo({ top: 0 });
+    showNotification(`Loaded ${preset.name} for ${symbol}`);
+  };
+
   // Add manual playbook journal entry
   const handleAddManualEntry = (entry: Omit<TradePlaybookEntry, 'id'>) => {
     const newEntry: TradePlaybookEntry = {
@@ -391,6 +503,10 @@ export default function App() {
         isLiveTicking={isLiveTicking}
         onToggleLiveTicking={() => setIsLiveTicking(!isLiveTicking)}
         paperPortfolioCount={playbookEntries.filter((p) => p.status === 'OPEN').length}
+        dataStatus={{
+          online: backend.online,
+          label: backend.online && backend.source ? `Data: ${SOURCE_LABEL[backend.source]}` : 'Data: Simulated',
+        }}
       />
 
       {/* Live Market Ticker */}
@@ -415,6 +531,20 @@ export default function App() {
             onOpenPayoff={handleOpenPayoff}
             onExecutePaperTrade={handleExecutePaperTradeFromScreener}
             onBacktestSetup={handleBacktestSetup}
+          />
+        )}
+
+        {/* Deep Analysis: Python engine on real history */}
+        {activeTab === 'deep-analysis' && (
+          <DeepAnalysisTab
+            instruments={instruments}
+            selectedSymbol={selectedSymbol}
+            onSelectSymbol={setSelectedSymbol}
+            userCapital={userCapital}
+            riskPercent={riskPercent}
+            backendOnline={backend.online}
+            onLogPlan={handleLogAnalysisPlan}
+            onOpenStrategy={handleOpenStrategy}
           />
         )}
 
@@ -539,6 +669,20 @@ export default function App() {
         )}
 
         {/* TAB 5: 30-Day Historical Volatility Backtest */}
+        {activeTab === 'backtest' && backend.online && (
+          <HistoricalBacktest
+            instruments={instruments}
+            selectedSymbol={selectedSymbol}
+            onSelectSymbol={setSelectedSymbol}
+            userCapital={userCapital}
+          />
+        )}
+        {activeTab === 'backtest' && !backend.online && (
+          <div className="bg-slate-900 border border-amber-500/30 rounded-xl p-4 text-xs text-amber-200">
+            Historical backtests on real NSE data need the Python engine. Run <code className="text-white">npm run api</code> in a second terminal.
+            The simulated options backtest below still works offline.
+          </div>
+        )}
         {activeTab === 'backtest' && (
           <BacktestTab
             instruments={instruments}
@@ -567,7 +711,7 @@ export default function App() {
             <span>·</span>
             <span>Based on 3-Month Stock Market Roadmap</span>
             <span>·</span>
-            <span>NSE / BSE Real-Time Derivatives Engine</span>
+            <span>{backend.online ? `Python engine · ${backend.source ? SOURCE_LABEL[backend.source] : ''}` : 'Simulated feed (start the Python engine for real data)'}</span>
           </div>
           <div>
             &quot;Don&apos;t collect strategies. Build a system.&quot;

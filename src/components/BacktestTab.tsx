@@ -149,7 +149,7 @@ export const BacktestTab: React.FC<BacktestTabProps> = ({
             Select Strategy to Backtest:
           </label>
           <div className="flex flex-wrap gap-2">
-            {PRESET_STRATEGIES.map((strat) => (
+            {PRESET_STRATEGIES.filter((st) => !st.legsGenerator(100, 1, 100, 1, 'X').some((l) => l.type === 'EQUITY')).map((strat) => (
               <button
                 key={strat.id}
                 onClick={() => setSelectedStrategyId(strat.id)}

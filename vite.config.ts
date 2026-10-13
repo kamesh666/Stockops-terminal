@@ -17,6 +17,10 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // Python analysis engine (backend/): python -m uvicorn stockops.api:app --port 8000
+      proxy: {
+        '/api': { target: process.env.STOCKOPS_API_URL || 'http://127.0.0.1:8000', changeOrigin: true },
+      },
     },
   };
 });

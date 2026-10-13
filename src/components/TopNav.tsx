@@ -6,6 +6,7 @@ interface TopNavProps {
   isLiveTicking: boolean;
   onToggleLiveTicking: () => void;
   paperPortfolioCount: number;
+  dataStatus: { online: boolean; label: string };
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
@@ -14,6 +15,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   isLiveTicking,
   onToggleLiveTicking,
   paperPortfolioCount,
+  dataStatus,
 }) => {
   return (
     <header className="flex items-center justify-between gap-8 px-6 py-3.5 bg-slate-900/90 border-b border-slate-800 backdrop-blur-md sticky top-0 z-50">
@@ -41,6 +43,14 @@ export const TopNav: React.FC<TopNavProps> = ({
           }`}
         >
           Auto Scanner
+        </button>
+        <button
+          onClick={() => onTabChange('deep-analysis')}
+          className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 ${
+            activeTab === 'deep-analysis' ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400' : ''
+          }`}
+        >
+          Deep Analysis
         </button>
         <button
           onClick={() => onTabChange('master-algo')}
@@ -102,6 +112,15 @@ export const TopNav: React.FC<TopNavProps> = ({
 
       {/* Zone 3: 1 Primary Action */}
       <div className="flex items-center gap-3 shrink-0">
+        <span
+          title={dataStatus.online ? 'Prices and indicators come from the Python engine' : 'Python engine not running - prices are simulated'}
+          className={`hidden xl:flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded border ${
+            dataStatus.online ? 'border-sky-500/30 text-sky-300 bg-sky-500/10' : 'border-amber-500/30 text-amber-300 bg-amber-500/10'
+          }`}
+        >
+          <span className={`w-1.5 h-1.5 rounded-full ${dataStatus.online ? 'bg-sky-400' : 'bg-amber-400'}`} />
+          {dataStatus.label}
+        </span>
         <button
           onClick={onToggleLiveTicking}
           className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap shrink-0 border ${
@@ -111,7 +130,7 @@ export const TopNav: React.FC<TopNavProps> = ({
           }`}
           title="Toggle live price ticks"
         >
-          {isLiveTicking ? 'Live NSE Feed: Active' : 'Live NSE Feed: Paused'}
+          {isLiveTicking ? (dataStatus.online ? 'Auto-refresh: On' : 'Live NSE Feed: Active') : (dataStatus.online ? 'Auto-refresh: Off' : 'Live NSE Feed: Paused')}
         </button>
       </div>
     </header>

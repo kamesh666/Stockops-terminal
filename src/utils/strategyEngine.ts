@@ -332,6 +332,141 @@ export const PRESET_STRATEGIES: StrategyDefinition[] = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Remaining strategies from the NSE "Options Trading Strategies" module (22 total)
+// so every recommendation from the Python engine can be opened as a payoff.
+// ---------------------------------------------------------------------------
+const mkLeg = (
+  id: string,
+  type: 'CE' | 'PE' | 'EQUITY',
+  action: 'BUY' | 'SELL',
+  strike: number,
+  spot: number,
+  lotSize: number,
+  expiry: string,
+  lots = 1,
+): StrategyLeg => ({
+  id,
+  type,
+  action,
+  strike,
+  expiry,
+  premium: type === 'EQUITY' ? 0 : calculateBlackScholes(spot, strike, 5 / 365, 0.07, 0.16, type).price,
+  lots,
+  lotSize,
+});
+
+PRESET_STRATEGIES.push(
+  {
+    id: 'short-put', name: 'Short Put', category: 'Bullish',
+    outlook: 'Neutral to bullish; collect premium', description: 'Sell an OTM put. Varsity cautions against naked put writing.',
+    maxProfit: 'Premium received', maxLoss: 'Strike - premium (large)', idealIV: 'High',
+    legsGenerator: (spot, lot, atm, st, exp) => [mkLeg('leg-1', 'PE', 'SELL', atm - st, spot, lot, exp)],
+  },
+  {
+    id: 'short-call', name: 'Short Call', category: 'Bearish',
+    outlook: 'Neutral to bearish; collect premium', description: 'Sell an OTM call. Unlimited upside risk.',
+    maxProfit: 'Premium received', maxLoss: 'Unlimited', idealIV: 'High',
+    legsGenerator: (spot, lot, atm, st, exp) => [mkLeg('leg-1', 'CE', 'SELL', atm + st, spot, lot, exp)],
+  },
+  {
+    id: 'synthetic-long-call', name: 'Synthetic Long Call', category: 'Bullish',
+    outlook: 'Bullish but want downside insurance', description: 'Long stock plus a long ATM put: call-like payoff.',
+    maxProfit: 'Unlimited', maxLoss: 'Put premium + (spot - strike)', idealIV: 'Low',
+    legsGenerator: (spot, lot, atm, _st, exp) => [mkLeg('leg-1', 'EQUITY', 'BUY', spot, spot, lot, exp), mkLeg('leg-2', 'PE', 'BUY', atm, spot, lot, exp)],
+  },
+  {
+    id: 'protective-put', name: 'Protective Put', category: 'Bullish',
+    outlook: 'Own the stock, insure against a fall', description: 'Long stock plus a slightly OTM put.',
+    maxProfit: 'Unlimited', maxLoss: 'Spot - strike + premium', idealIV: 'Low',
+    legsGenerator: (spot, lot, atm, st, exp) => [mkLeg('leg-1', 'EQUITY', 'BUY', spot, spot, lot, exp), mkLeg('leg-2', 'PE', 'BUY', atm - st, spot, lot, exp)],
+  },
+  {
+    id: 'covered-call', name: 'Covered Call', category: 'Low Volatility / Income',
+    outlook: 'Mildly bullish; earn income on holdings', description: 'Long stock plus a short OTM call.',
+    maxProfit: '(Strike - spot) + premium', maxLoss: 'Stock downside less premium', idealIV: 'High',
+    legsGenerator: (spot, lot, atm, st, exp) => [mkLeg('leg-1', 'EQUITY', 'BUY', spot, spot, lot, exp), mkLeg('leg-2', 'CE', 'SELL', atm + st, spot, lot, exp)],
+  },
+  {
+    id: 'collar', name: 'Collar', category: 'Low Volatility / Income',
+    outlook: 'Protect holdings cheaply', description: 'Long stock, long OTM put, short OTM call. Risk and reward both capped.',
+    maxProfit: 'Call strike - spot + net premium', maxLoss: 'Spot - put strike - net premium', idealIV: 'Any',
+    legsGenerator: (spot, lot, atm, st, exp) => [
+      mkLeg('leg-1', 'EQUITY', 'BUY', spot, spot, lot, exp), mkLeg('leg-2', 'PE', 'BUY', atm - st, spot, lot, exp), mkLeg('leg-3', 'CE', 'SELL', atm + 2 * st, spot, lot, exp),
+    ],
+  },
+  {
+    id: 'covered-put', name: 'Covered Put', category: 'Bearish',
+    outlook: 'Mildly bearish on a shorted stock', description: 'Short stock plus a short OTM put.',
+    maxProfit: '(Spot - strike) + premium', maxLoss: 'Unlimited', idealIV: 'High',
+    legsGenerator: (spot, lot, atm, st, exp) => [mkLeg('leg-1', 'EQUITY', 'SELL', spot, spot, lot, exp), mkLeg('leg-2', 'PE', 'SELL', atm - st, spot, lot, exp)],
+  },
+  {
+    id: 'protective-call', name: 'Protective Call', category: 'Bearish',
+    outlook: 'Short the stock, insure against a rally', description: 'Short stock plus a long ATM call.',
+    maxProfit: 'Spot - premium', maxLoss: 'Strike - spot + premium', idealIV: 'Low',
+    legsGenerator: (spot, lot, atm, _st, exp) => [mkLeg('leg-1', 'EQUITY', 'SELL', spot, spot, lot, exp), mkLeg('leg-2', 'CE', 'BUY', atm, spot, lot, exp)],
+  },
+  {
+    id: 'long-combo', name: 'Long Combo', category: 'Bullish',
+    outlook: 'Bullish, low-cost entry', description: 'Sell an OTM put, buy an OTM call. Futures-like payoff between the strikes.',
+    maxProfit: 'Unlimited', maxLoss: 'Large (put strike - net premium)', idealIV: 'Any',
+    legsGenerator: (spot, lot, atm, st, exp) => [mkLeg('leg-1', 'PE', 'SELL', atm - st, spot, lot, exp), mkLeg('leg-2', 'CE', 'BUY', atm + st, spot, lot, exp)],
+  },
+  {
+    id: 'long-strangle', name: 'Long Strangle', category: 'High Volatility',
+    outlook: 'Big move expected, direction unknown', description: 'Buy an OTM call and an OTM put. Cheaper than a straddle; needs a bigger move.',
+    maxProfit: 'Unlimited', maxLoss: 'Net premium paid', idealIV: 'Low',
+    legsGenerator: (spot, lot, atm, st, exp) => [mkLeg('leg-1', 'CE', 'BUY', atm + 2 * st, spot, lot, exp), mkLeg('leg-2', 'PE', 'BUY', atm - 2 * st, spot, lot, exp)],
+  },
+  {
+    id: 'short-straddle', name: 'Short Straddle', category: 'Neutral / Rangebound',
+    outlook: 'Price pinned near ATM, IV falling', description: 'Sell the ATM call and ATM put. Maximum theta, unlimited risk.',
+    maxProfit: 'Net premium received', maxLoss: 'Unlimited', idealIV: 'High',
+    legsGenerator: (spot, lot, atm, _st, exp) => [mkLeg('leg-1', 'CE', 'SELL', atm, spot, lot, exp), mkLeg('leg-2', 'PE', 'SELL', atm, spot, lot, exp)],
+  },
+  {
+    id: 'short-strangle', name: 'Short Strangle', category: 'Neutral / Rangebound',
+    outlook: 'Rangebound inside the 1-SD band', description: 'Sell an OTM call and an OTM put (Varsity: strikes outside 1 SD).',
+    maxProfit: 'Net premium received', maxLoss: 'Unlimited', idealIV: 'High',
+    legsGenerator: (spot, lot, atm, st, exp) => [mkLeg('leg-1', 'CE', 'SELL', atm + 3 * st, spot, lot, exp), mkLeg('leg-2', 'PE', 'SELL', atm - 3 * st, spot, lot, exp)],
+  },
+  {
+    id: 'long-call-butterfly', name: 'Long Call Butterfly', category: 'Neutral / Rangebound',
+    outlook: 'Expiry close to ATM', description: 'Buy ITM call, sell 2 ATM calls, buy OTM call. Cheap, defined risk.',
+    maxProfit: 'Wing width - net debit', maxLoss: 'Net debit', idealIV: 'High',
+    legsGenerator: (spot, lot, atm, st, exp) => [
+      mkLeg('leg-1', 'CE', 'BUY', atm - 2 * st, spot, lot, exp), mkLeg('leg-2', 'CE', 'SELL', atm, spot, lot, exp, 2), mkLeg('leg-3', 'CE', 'BUY', atm + 2 * st, spot, lot, exp),
+    ],
+  },
+  {
+    id: 'short-call-butterfly', name: 'Short Call Butterfly', category: 'High Volatility',
+    outlook: 'Breakout either way', description: 'Sell ITM call, buy 2 ATM calls, sell OTM call. Profits from a move away from ATM.',
+    maxProfit: 'Net credit', maxLoss: 'Wing width - net credit', idealIV: 'High',
+    legsGenerator: (spot, lot, atm, st, exp) => [
+      mkLeg('leg-1', 'CE', 'SELL', atm - 2 * st, spot, lot, exp), mkLeg('leg-2', 'CE', 'BUY', atm, spot, lot, exp, 2), mkLeg('leg-3', 'CE', 'SELL', atm + 2 * st, spot, lot, exp),
+    ],
+  },
+  {
+    id: 'long-call-condor', name: 'Long Call Condor', category: 'Neutral / Rangebound',
+    outlook: 'Expiry inside a band', description: 'Buy ITM call, sell two middle calls, buy far OTM call. Wider sweet spot than a butterfly.',
+    maxProfit: 'Middle width - net debit', maxLoss: 'Net debit', idealIV: 'High',
+    legsGenerator: (spot, lot, atm, st, exp) => [
+      mkLeg('leg-1', 'CE', 'BUY', atm - 2 * st, spot, lot, exp), mkLeg('leg-2', 'CE', 'SELL', atm - st, spot, lot, exp),
+      mkLeg('leg-3', 'CE', 'SELL', atm + st, spot, lot, exp), mkLeg('leg-4', 'CE', 'BUY', atm + 2 * st, spot, lot, exp),
+    ],
+  },
+  {
+    id: 'short-call-condor', name: 'Short Call Condor', category: 'High Volatility',
+    outlook: 'Move out of a band, either way', description: 'Sell ITM call, buy two middle calls, sell far OTM call.',
+    maxProfit: 'Net credit', maxLoss: 'Middle width - net credit', idealIV: 'Low',
+    legsGenerator: (spot, lot, atm, st, exp) => [
+      mkLeg('leg-1', 'CE', 'SELL', atm - 2 * st, spot, lot, exp), mkLeg('leg-2', 'CE', 'BUY', atm - st, spot, lot, exp),
+      mkLeg('leg-3', 'CE', 'BUY', atm + st, spot, lot, exp), mkLeg('leg-4', 'CE', 'SELL', atm + 2 * st, spot, lot, exp),
+    ],
+  },
+);
+
 /**
  * Calculate multi-leg payoff matrix across underlying prices
  */

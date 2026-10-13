@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "stockops-terminal",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,7 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "api": "cd backend && python -m uvicorn stockops.api:app --reload --port 8000",
+    "api:install": "cd backend && python -m pip install -r requirements.txt",
+    "api:test": "cd backend && python -m pytest -q"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -27,7 +30,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2",
