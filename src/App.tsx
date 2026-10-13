@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useTransition } from 'react';
-import { StockQuote, StrategyLeg, AutomatedSetup, TradePlaybookEntry, AlgoSignal } from './types/market';
+import { StockQuote, StrategyLeg, AutomatedSetup, TradePlaybookEntry, AlgoSignal, MasterAlgoSignal } from './types/market';
 import { INDIAN_INSTRUMENTS, generateCandles, generateOptionChain, getStrikeStep } from './data/indianMarketData';
 import { scanMarketOpportunities } from './utils/patternScanner';
 import { PRESET_STRATEGIES } from './utils/strategyEngine';
@@ -13,6 +13,7 @@ import { RoadmapPlaybook } from './components/RoadmapPlaybook';
 import { CapitalRiskCalculator } from './components/CapitalRiskCalculator';
 import { BacktestTab } from './components/BacktestTab';
 import { AlgoSignalsTab } from './components/AlgoSignalsTab';
+import { MasterAlgoTab } from './components/MasterAlgoTab';
 
 export default function App() {
   const [instruments, setInstruments] = useState<StockQuote[]>(INDIAN_INSTRUMENTS);
@@ -77,6 +78,7 @@ export default function App() {
       currentPnL: 4250,
       emotion: 'Disciplined',
       lesson: 'Waited for 15m candle close above previous day high before taking entry.',
+      tags: ['Breakout', 'EMA Bounce', 'Momentum'],
     },
     {
       id: 'trade-init-2',
@@ -94,6 +96,7 @@ export default function App() {
       currentPnL: 2180,
       emotion: 'Disciplined',
       lesson: 'Harvesting elevated theta during mid-week consolidation.',
+      tags: ['Theta Decay', 'Rangebound'],
     },
     {
       id: 'trade-init-3',
@@ -111,6 +114,7 @@ export default function App() {
       currentPnL: 13750,
       emotion: 'Disciplined',
       lesson: 'Target 1 hit at resistance 2995. Trailed stop loss to protect accumulated gains.',
+      tags: ['Breakout', 'Support Retest'],
     },
     {
       id: 'trade-init-4',
@@ -128,6 +132,7 @@ export default function App() {
       currentPnL: 8400,
       emotion: 'Cautious',
       lesson: 'Closed early ahead of quarterly earnings report to eliminate binary event risk.',
+      tags: ['Earnings', 'Reversal'],
     },
   ]);
 
@@ -226,6 +231,7 @@ export default function App() {
       currentPnL: 0,
       emotion: 'Disciplined',
       lesson: setup.explanation,
+      tags: [setup.pattern.includes('Breakout') ? 'Breakout' : setup.pattern.includes('Bottom') ? 'Reversal' : 'Momentum', setup.marketView],
     };
     setPlaybookEntries((prev) => [newEntry, ...prev]);
     showNotification(`Simulated Trade Logged: ${setup.symbol} ${setup.recommendedStrategy} (${setup.calculatedLots} Lots)`);
@@ -250,6 +256,7 @@ export default function App() {
       currentPnL: 0,
       emotion: 'Disciplined',
       lesson: 'Executed multi-leg position via Strategy Payoff Builder.',
+      tags: ['Options Spread', 'Payoff Strategy'],
     };
     setPlaybookEntries((prev) => [newEntry, ...prev]);
     showNotification(`Strategy executed in Playbook Journal: ${name}`);
@@ -281,6 +288,7 @@ export default function App() {
       currentPnL: 0,
       emotion: 'Disciplined',
       lesson: `Algo 80%+ Confirmed: ${signal.patternName}. Invalidation: ${signal.invalidationTrigger}`,
+      tags: ['Algo Radar', signal.patternName.includes('Breakdown') ? 'Reversal' : 'Breakout', signal.contractCallOrPut === 'CE' ? 'Call Momentum' : 'Put Breakdown'],
     };
     setPlaybookEntries((prev) => [newEntry, ...prev]);
     showNotification(`Algo Trade Executed: ${signal.actionLabel} (${signal.recommendedLots} Lots)`);
@@ -288,6 +296,46 @@ export default function App() {
 
   // Backtest signal across 30 days
   const handleBacktestSignal = (signal: AlgoSignal) => {
+    setSelectedSymbol(signal.symbol);
+    startTransition(() => {
+      setActiveTab('backtest');
+    });
+  };
+
+  // Select Master signal to view on chart
+  const handleSelectMasterSignalForChart = (signal: MasterAlgoSignal) => {
+    setSelectedSymbol(signal.symbol);
+    startTransition(() => {
+      setActiveTab('charts');
+    });
+  };
+
+  // Execute Master Algo trade into playbook journal
+  const handleExecuteMasterTrade = (signal: MasterAlgoSignal) => {
+    const newEntry: TradePlaybookEntry = {
+      id: `master-trade-${Date.now()}`,
+      symbol: signal.symbol,
+      strategyName: `${signal.tradeAction} (Master Algo ${signal.masterConfidenceScore}%)`,
+      entryDate: new Date().toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }),
+      timeframe: signal.timeframe,
+      entryPrice: signal.entryPrice,
+      stopLoss: signal.hardStopLoss,
+      target: signal.target1,
+      positionSize: `${signal.capitalSizing.recommendedLots} Lot(s) (${signal.capitalSizing.shares} Qty)`,
+      capitalDeployed: signal.capitalSizing.capitalRequired,
+      riskAmount: signal.capitalSizing.maxRiskAmount,
+      status: 'OPEN',
+      currentPnL: 0,
+      emotion: 'Disciplined',
+      lesson: `6-Pillar Confluence (TrendSpider AVWAP + Squeeze, CMC Ichimoku + Fib, TradingComputers POC, Investopedia Greeks). ${signal.invalidationLevel}`,
+      tags: ['Master Algo', signal.squeezeStatus.includes('FIRING') ? 'Squeeze Fired' : 'AVWAP Defense', 'Institutional'],
+    };
+    setPlaybookEntries((prev) => [newEntry, ...prev]);
+    showNotification(`Master Algo Executed: ${signal.tradeAction} (${signal.capitalSizing.recommendedLots} Lots)`);
+  };
+
+  // Backtest Master signal
+  const handleBacktestMasterSignal = (signal: MasterAlgoSignal) => {
     setSelectedSymbol(signal.symbol);
     startTransition(() => {
       setActiveTab('backtest');
@@ -316,6 +364,14 @@ export default function App() {
     };
     setPlaybookEntries((prev) => [newEntry, ...prev]);
     showNotification(`Logged new trade in journal for ${entry.symbol}`);
+  };
+
+  // Update custom tags on an existing playbook entry for post-trade analysis
+  const handleUpdateEntryTags = (id: string, tags: string[]) => {
+    setPlaybookEntries((prev) =>
+      prev.map((e) => (e.id === id ? { ...e, tags } : e))
+    );
+    showNotification('Journal entry tags updated.');
   };
 
   return (
@@ -362,7 +418,20 @@ export default function App() {
           />
         )}
 
-        {/* TAB 2: Algo Radar (80%+ Strong Technique Scanner) */}
+        {/* TAB 2: Master Algo (6-Pillar Institutional Confluence) */}
+        {activeTab === 'master-algo' && (
+          <MasterAlgoTab
+            instruments={instruments}
+            selectedSymbol={selectedSymbol}
+            onSelectSymbol={setSelectedSymbol}
+            userCapital={userCapital}
+            onSelectSignalForChart={handleSelectMasterSignalForChart}
+            onExecuteMasterTrade={handleExecuteMasterTrade}
+            onBacktestSignal={handleBacktestMasterSignal}
+          />
+        )}
+
+        {/* TAB 3: Algo Radar (80%+ Strong Technique Scanner) */}
         {activeTab === 'algo-signals' && (
           <AlgoSignalsTab
             instruments={instruments}
@@ -485,6 +554,7 @@ export default function App() {
             entries={playbookEntries}
             onCloseTrade={handleCloseTrade}
             onAddManualEntry={handleAddManualEntry}
+            onUpdateTags={handleUpdateEntryTags}
           />
         )}
       </main>

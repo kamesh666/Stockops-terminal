@@ -1,20 +1,27 @@
-import React, { useState } from 'react';
-import { Download } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Download, Tag, Plus, BarChart3, TrendingUp, Sparkles, Filter } from 'lucide-react';
 import { TradePlaybookEntry } from '../types/market';
 
 interface RoadmapPlaybookProps {
   entries: TradePlaybookEntry[];
   onCloseTrade: (id: string, resultPnL: number) => void;
   onAddManualEntry: (entry: Omit<TradePlaybookEntry, 'id'>) => void;
+  onUpdateTags?: (id: string, tags: string[]) => void;
 }
 
 export const RoadmapPlaybook: React.FC<RoadmapPlaybookProps> = ({
   entries,
   onCloseTrade,
   onAddManualEntry,
+  onUpdateTags,
 }) => {
   const [activeSection, setActiveSection] = useState<'journal' | 'roadmap'>('journal');
   const [selectedWeek, setSelectedWeek] = useState<number>(12);
+
+  // Post-trade tag analysis view state
+  const [showTagAnalytics, setShowTagAnalytics] = useState<boolean>(true);
+  const [editingTradeTagId, setEditingTradeTagId] = useState<string | null>(null);
+  const [inlineTagInput, setInlineTagInput] = useState<string>('');
 
   // New manual entry modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -29,6 +36,100 @@ export const RoadmapPlaybook: React.FC<RoadmapPlaybookProps> = ({
   const [riskAmount, setRiskAmount] = useState(6000);
   const [emotion, setEmotion] = useState<'Disciplined' | 'Cautious' | 'Aggressive' | 'Neutral'>('Disciplined');
   const [lesson, setLesson] = useState('Followed 20 EMA bounce and confirmed with positive PCR.');
+  const [selectedTags, setSelectedTags] = useState<string[]>(['Breakout']);
+  const [customTagInput, setCustomTagInput] = useState<string>('');
+  const [selectedTagFilter, setSelectedTagFilter] = useState<string>('ALL');
+
+  const PRESET_TAG_SUGGESTIONS = [
+    'Earnings',
+    'Breakout',
+    'Reversal',
+    'Momentum',
+    'VWAP Bounce',
+    'Theta Decay',
+    'Golden Cross',
+    'Squeeze Fired',
+    'Support Retest',
+    'AVWAP Defense',
+    'Gap Fill',
+    'Expiry Play',
+  ];
+
+  // Add tag to an existing entry for post-trade analysis
+  const handleAddTagToExistingTrade = (tradeId: string, tagToAdd: string) => {
+    const trimmed = tagToAdd.trim();
+    if (!trimmed) return;
+    const targetTrade = entries.find((e) => e.id === tradeId);
+    if (!targetTrade) return;
+    const existingTags = targetTrade.tags || [];
+    if (!existingTags.includes(trimmed)) {
+      const updatedTags = [...existingTags, trimmed];
+      onUpdateTags?.(tradeId, updatedTags);
+    }
+  };
+
+  // Remove tag from an existing entry
+  const handleRemoveTagFromExistingTrade = (tradeId: string, tagToRemove: string) => {
+    const targetTrade = entries.find((e) => e.id === tradeId);
+    if (!targetTrade) return;
+    const existingTags = targetTrade.tags || [];
+    const updatedTags = existingTags.filter((t) => t !== tagToRemove);
+    onUpdateTags?.(tradeId, updatedTags);
+  };
+
+  // Tag performance analytics calculation for post-trade analysis
+  const tagAnalytics = useMemo(() => {
+    const tagMap: {
+      [tag: string]: {
+        count: number;
+        wins: number;
+        losses: number;
+        totalPnL: number;
+        avgPnL: number;
+        winRate: number;
+      };
+    } = {};
+
+    entries.forEach((trade) => {
+      const tradeTags = trade.tags && trade.tags.length > 0 ? trade.tags : ['Untagged'];
+      const isWin = trade.currentPnL > 0;
+      tradeTags.forEach((tag) => {
+        if (!tagMap[tag]) {
+          tagMap[tag] = { count: 0, wins: 0, losses: 0, totalPnL: 0, avgPnL: 0, winRate: 0 };
+        }
+        tagMap[tag].count += 1;
+        if (isWin) tagMap[tag].wins += 1;
+        else if (trade.currentPnL < 0) tagMap[tag].losses += 1;
+        tagMap[tag].totalPnL += trade.currentPnL;
+      });
+    });
+
+    return Object.entries(tagMap)
+      .map(([tag, data]) => ({
+        tag,
+        count: data.count,
+        wins: data.wins,
+        losses: data.losses,
+        totalPnL: data.totalPnL,
+        avgPnL: data.count > 0 ? Math.round(data.totalPnL / data.count) : 0,
+        winRate: data.count > 0 ? Math.round((data.wins / data.count) * 100) : 0,
+      }))
+      .sort((a, b) => b.totalPnL - a.totalPnL);
+  }, [entries]);
+
+  const handleToggleTag = (tag: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  };
+
+  const handleAddCustomTag = () => {
+    const trimmed = customTagInput.trim();
+    if (trimmed && !selectedTags.includes(trimmed)) {
+      setSelectedTags((prev) => [...prev, trimmed]);
+      setCustomTagInput('');
+    }
+  };
 
   const handleCreateEntry = (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,6 +148,7 @@ export const RoadmapPlaybook: React.FC<RoadmapPlaybookProps> = ({
       currentPnL: 0,
       emotion,
       lesson,
+      tags: selectedTags.length > 0 ? selectedTags : ['Manual Trade'],
     });
     setIsModalOpen(false);
   };
@@ -64,6 +166,7 @@ export const RoadmapPlaybook: React.FC<RoadmapPlaybookProps> = ({
       'Trade ID',
       'Symbol',
       'Strategy',
+      'Tags',
       'Entry Date',
       'Timeframe',
       'Entry Price (INR)',
@@ -85,6 +188,7 @@ export const RoadmapPlaybook: React.FC<RoadmapPlaybookProps> = ({
           `"${t.id}"`,
           `"${t.symbol}"`,
           `"${t.strategyName}"`,
+          `"${(t.tags || []).join('; ')}"`,
           `"${t.entryDate}"`,
           `"${t.timeframe}"`,
           t.entryPrice,
@@ -280,6 +384,18 @@ export const RoadmapPlaybook: React.FC<RoadmapPlaybookProps> = ({
             </h3>
             <div className="flex items-center gap-2.5">
               <button
+                onClick={() => setShowTagAnalytics(!showTagAnalytics)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
+                  showTagAnalytics
+                    ? 'bg-purple-950/60 text-purple-300 border-purple-700/80 shadow-sm'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                }`}
+                title="Toggle Post-Trade Tag Performance Analysis"
+              >
+                <BarChart3 className="w-3.5 h-3.5 text-purple-400" />
+                <span>Tag Analytics ({tagAnalytics.length})</span>
+              </button>
+              <button
                 onClick={handleDownloadCSV}
                 disabled={entries.length === 0}
                 className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors flex items-center gap-1.5 disabled:opacity-50"
@@ -297,6 +413,103 @@ export const RoadmapPlaybook: React.FC<RoadmapPlaybookProps> = ({
             </div>
           </div>
 
+          {/* Post-Trade Tag Performance Analysis Panel */}
+          {showTagAnalytics && tagAnalytics.length > 0 && (
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-white">
+                    Post-Trade Tag Performance &amp; Win Rate Audit
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-400">
+                  Analyze strategy conviction &amp; profitability by setup tags
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+                {tagAnalytics.slice(0, 6).map((item) => {
+                  const isPositive = item.totalPnL >= 0;
+                  const isFiltered = selectedTagFilter === item.tag;
+                  return (
+                    <button
+                      key={item.tag}
+                      onClick={() => setSelectedTagFilter(selectedTagFilter === item.tag ? 'ALL' : item.tag)}
+                      className={`text-left p-2.5 rounded-lg border transition-all ${
+                        isFiltered
+                          ? 'bg-purple-950/40 border-purple-500 shadow-sm'
+                          : 'bg-slate-950 border-slate-800/80 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="font-mono font-bold text-white truncate">#{item.tag}</span>
+                        <span className="text-[10px] text-slate-400">{item.count}T</span>
+                      </div>
+                      <div className="text-xs font-mono font-bold tabular-nums">
+                        <span className={isPositive ? 'text-emerald-400' : 'text-rose-400'}>
+                          {isPositive ? '+' : ''}₹{item.totalPnL.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 flex items-center justify-between text-[10px]">
+                        <span className="text-slate-500">Win Rate</span>
+                        <span className={`font-semibold ${item.winRate >= 50 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {item.winRate}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-800 h-1 rounded-full mt-1 overflow-hidden">
+                        <div
+                          className={`h-full ${item.winRate >= 50 ? 'bg-emerald-400' : 'bg-amber-400'}`}
+                          style={{ width: `${item.winRate}%` }}
+                        />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Tag Filter Bar for Post-Trade Analysis */}
+          {(() => {
+            const allAvailableTags = Array.from(new Set(entries.flatMap((e) => e.tags || [])));
+            if (allAvailableTags.length === 0) return null;
+            return (
+              <div className="flex flex-wrap items-center gap-1.5 text-xs bg-slate-900 border border-slate-800 p-2.5 rounded-lg">
+                <span className="text-slate-400 font-semibold mr-1 flex items-center gap-1">
+                  <Filter className="w-3 h-3 text-emerald-400" />
+                  Filter by Tag:
+                </span>
+                <button
+                  onClick={() => setSelectedTagFilter('ALL')}
+                  className={`px-2.5 py-1 rounded text-xs transition-colors ${
+                    selectedTagFilter === 'ALL'
+                      ? 'bg-slate-800 text-white font-bold border border-slate-700'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  All Tags ({entries.length})
+                </button>
+                {allAvailableTags.map((tag) => {
+                  const count = entries.filter((e) => e.tags && e.tags.includes(tag)).length;
+                  return (
+                    <button
+                      key={tag}
+                      onClick={() => setSelectedTagFilter(tag)}
+                      className={`px-2.5 py-1 rounded text-xs font-mono transition-colors ${
+                        selectedTagFilter === tag
+                          ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40'
+                          : 'bg-slate-950 border border-slate-800/80 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      #{tag} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
           {entries.length === 0 ? (
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center">
               <p className="text-slate-400 text-xs">
@@ -308,94 +521,217 @@ export const RoadmapPlaybook: React.FC<RoadmapPlaybookProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4">
-              {entries.map((trade) => {
-                const isOpen = trade.status === 'OPEN';
-                const isProfit = trade.currentPnL >= 0;
+              {entries
+                .filter((trade) => selectedTagFilter === 'ALL' || (trade.tags && trade.tags.includes(selectedTagFilter)))
+                .map((trade) => {
+                  const isOpen = trade.status === 'OPEN';
+                  const isProfit = trade.currentPnL >= 0;
+                  const isEditingTags = editingTradeTagId === trade.id;
 
-                return (
-                  <div
-                    key={trade.id}
-                    className="bg-slate-900 border border-slate-800 rounded-xl p-5 hover:border-slate-700 transition-colors"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-slate-800">
-                      <div>
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-base font-bold text-white">{trade.symbol}</span>
-                          <span className="text-xs font-semibold text-emerald-400">{trade.strategyName}</span>
-                          <span className="text-xs text-slate-400">· {trade.timeframe}</span>
+                  return (
+                    <div
+                      key={trade.id}
+                      className="bg-slate-900 border border-slate-800 rounded-xl p-5 hover:border-slate-700 transition-colors"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-slate-800">
+                        <div>
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-base font-bold text-white">{trade.symbol}</span>
+                            <span className="text-xs font-semibold text-emerald-400">{trade.strategyName}</span>
+                            <span className="text-xs text-slate-400">· {trade.timeframe}</span>
+                          </div>
+                          <div className="text-xs text-slate-500 mt-0.5">
+                            Entered: {trade.entryDate} · Sizing: {trade.positionSize}
+                          </div>
                         </div>
-                        <div className="text-xs text-slate-500 mt-0.5">
-                          Entered: {trade.entryDate} · Sizing: {trade.positionSize}
+
+                        <div className="flex items-center gap-4 text-xs font-mono tabular-nums">
+                          <div>
+                            <span className="text-[10px] font-sans text-slate-500 block">CURRENT P&L</span>
+                            <span className={`text-base font-bold ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {isProfit ? '+' : ''}₹{trade.currentPnL.toLocaleString('en-IN')}
+                            </span>
+                          </div>
+
+                          <div>
+                            <span className="text-[10px] font-sans text-slate-500 block">STATUS</span>
+                            <span
+                              className={`font-sans font-bold text-xs ${
+                                isOpen ? 'text-amber-400' : 'text-slate-400'
+                              }`}
+                            >
+                              {trade.status}
+                            </span>
+                          </div>
+
+                          {isOpen && (
+                            <button
+                              onClick={() => onCloseTrade(trade.id, trade.currentPnL)}
+                              className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-sans font-semibold border border-slate-700"
+                            >
+                              Close Position
+                            </button>
+                          )}
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-4 text-xs font-mono tabular-nums">
+                      {/* Parameters Strip */}
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 my-3 text-xs font-mono tabular-nums bg-slate-950 p-3 rounded-lg border border-slate-800/80">
                         <div>
-                          <span className="text-[10px] font-sans text-slate-500 block">CURRENT P&L</span>
-                          <span className={`text-base font-bold ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {isProfit ? '+' : ''}₹{trade.currentPnL.toLocaleString('en-IN')}
-                          </span>
+                          <span className="text-[10px] font-sans text-slate-500 block">ENTRY</span>
+                          <span className="text-cyan-400 font-bold">₹{trade.entryPrice.toFixed(1)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-sans text-slate-500 block">STOP LOSS</span>
+                          <span className="text-rose-400 font-bold">₹{trade.stopLoss.toFixed(1)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-sans text-slate-500 block">TARGET</span>
+                          <span className="text-emerald-400 font-bold">₹{trade.target.toFixed(1)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-sans text-slate-500 block">CAPITAL DEPLOYED</span>
+                          <span className="text-white font-bold">₹{trade.capitalDeployed.toLocaleString('en-IN')}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-sans text-slate-500 block">RISK AT STAKE</span>
+                          <span className="text-amber-400 font-bold">₹{trade.riskAmount.toLocaleString('en-IN')}</span>
+                        </div>
+                      </div>
+
+                      {/* Psychology & Lesson Strip (from PDF Week 8) */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400 pt-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-500 font-medium">State of Mind:</span>
+                          <span className="text-slate-200 font-semibold">{trade.emotion}</span>
+                          <span className="text-slate-600">·</span>
+                          <span className="text-slate-500 font-medium">Key Lesson:</span>
+                          <span className="text-slate-300 italic">{trade.lesson}</span>
+                        </div>
+                      </div>
+
+                      {/* Custom Tags Display & In-Place Tagging */}
+                      <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex flex-col gap-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[11px] text-slate-400 font-semibold flex items-center gap-1 mr-0.5">
+                              <Tag className="w-3 h-3 text-emerald-400" />
+                              Tags:
+                            </span>
+
+                            {trade.tags && trade.tags.length > 0 ? (
+                              trade.tags.map((tag) => (
+                                <span
+                                  key={tag}
+                                  className="inline-flex items-center gap-1 text-[11px] font-mono bg-slate-950 text-slate-200 px-2 py-0.5 rounded border border-slate-800 hover:border-slate-700 transition-colors"
+                                >
+                                  <button
+                                    onClick={() => setSelectedTagFilter(tag)}
+                                    className="hover:text-emerald-300 transition-colors"
+                                    title={`Filter journal by #${tag}`}
+                                  >
+                                    #{tag}
+                                  </button>
+                                  <button
+                                    onClick={() => handleRemoveTagFromExistingTrade(trade.id, tag)}
+                                    className="text-slate-500 hover:text-rose-400 ml-0.5 font-bold text-xs"
+                                    title={`Remove #${tag}`}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-[11px] text-slate-500 italic mr-1">No tags yet</span>
+                            )}
+
+                            {/* Button to open inline tag manager */}
+                            <button
+                              onClick={() => {
+                                setEditingTradeTagId(isEditingTags ? null : trade.id);
+                                setInlineTagInput('');
+                              }}
+                              className="text-[11px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold border border-slate-700 transition-colors flex items-center gap-1"
+                              title="Add custom tags to this trade"
+                            >
+                              <Plus className="w-3 h-3 text-emerald-400" />
+                              <span>{isEditingTags ? 'Done' : 'Add Tag'}</span>
+                            </button>
+                          </div>
                         </div>
 
-                        <div>
-                          <span className="text-[10px] font-sans text-slate-500 block">STATUS</span>
-                          <span
-                            className={`font-sans font-bold text-xs ${
-                              isOpen ? 'text-amber-400' : 'text-slate-400'
-                            }`}
-                          >
-                            {trade.status}
-                          </span>
-                        </div>
+                        {/* Inline Tag Adding Drawer */}
+                        {isEditingTags && (
+                          <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-2 mt-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
+                                <Sparkles className="w-3 h-3 text-amber-400" />
+                                Add Tag to Trade ({trade.symbol}):
+                              </span>
+                              <button
+                                onClick={() => setEditingTradeTagId(null)}
+                                className="text-slate-500 hover:text-white text-xs font-bold"
+                              >
+                                Close
+                              </button>
+                            </div>
 
-                        {isOpen && (
-                          <button
-                            onClick={() => onCloseTrade(trade.id, trade.currentPnL)}
-                            className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-sans font-semibold border border-slate-700"
-                          >
-                            Close Position
-                          </button>
+                            {/* Popular Tag Chips */}
+                            <div className="flex flex-wrap gap-1">
+                              {PRESET_TAG_SUGGESTIONS.map((preset) => {
+                                const isAlreadyAdded = trade.tags?.includes(preset);
+                                return (
+                                  <button
+                                    key={preset}
+                                    type="button"
+                                    disabled={isAlreadyAdded}
+                                    onClick={() => handleAddTagToExistingTrade(trade.id, preset)}
+                                    className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                                      isAlreadyAdded
+                                        ? 'bg-slate-900 border-slate-800/80 text-slate-600 cursor-not-allowed'
+                                        : 'bg-slate-900 border-slate-700/80 text-slate-300 hover:bg-slate-800 hover:text-white hover:border-emerald-500/50'
+                                    }`}
+                                  >
+                                    {isAlreadyAdded ? '✓ ' : '+ '}
+                                    {preset}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* Custom Tag Input */}
+                            <div className="flex items-center gap-2 pt-1">
+                              <input
+                                type="text"
+                                placeholder="Type custom tag (e.g. Earnings, Breakout, Reversal)..."
+                                value={inlineTagInput}
+                                onChange={(e) => setInlineTagInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleAddTagToExistingTrade(trade.id, inlineTagInput);
+                                    setInlineTagInput('');
+                                  }
+                                }}
+                                className="flex-1 bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleAddTagToExistingTrade(trade.id, inlineTagInput);
+                                  setInlineTagInput('');
+                                }}
+                                className="px-3 py-1 rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-colors"
+                              >
+                                Add Tag
+                              </button>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </div>
-
-                    {/* Parameters Strip */}
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 my-3 text-xs font-mono tabular-nums bg-slate-950 p-3 rounded-lg border border-slate-800/80">
-                      <div>
-                        <span className="text-[10px] font-sans text-slate-500 block">ENTRY</span>
-                        <span className="text-cyan-400 font-bold">₹{trade.entryPrice.toFixed(1)}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-sans text-slate-500 block">STOP LOSS</span>
-                        <span className="text-rose-400 font-bold">₹{trade.stopLoss.toFixed(1)}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-sans text-slate-500 block">TARGET</span>
-                        <span className="text-emerald-400 font-bold">₹{trade.target.toFixed(1)}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-sans text-slate-500 block">CAPITAL DEPLOYED</span>
-                        <span className="text-white font-bold">₹{trade.capitalDeployed.toLocaleString('en-IN')}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-sans text-slate-500 block">RISK AT STAKE</span>
-                        <span className="text-amber-400 font-bold">₹{trade.riskAmount.toLocaleString('en-IN')}</span>
-                      </div>
-                    </div>
-
-                    {/* Psychology & Lesson Strip (from PDF Week 8) */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400 pt-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-slate-500 font-medium">State of Mind:</span>
-                        <span className="text-slate-200 font-semibold">{trade.emotion}</span>
-                        <span className="text-slate-600">·</span>
-                        <span className="text-slate-500 font-medium">Key Lesson:</span>
-                        <span className="text-slate-300 italic">{trade.lesson}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           )}
         </div>
@@ -597,6 +933,77 @@ export const RoadmapPlaybook: React.FC<RoadmapPlaybookProps> = ({
                   onChange={(e) => setLesson(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-white"
                 />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 font-semibold mb-1">
+                  Custom Strategy &amp; Pattern Tags
+                </label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {PRESET_TAG_SUGGESTIONS.map((preset) => {
+                    const isSelected = selectedTags.includes(preset);
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => handleToggleTag(preset)}
+                        className={`text-[11px] px-2.5 py-1 rounded border transition-colors ${
+                          isSelected
+                            ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300 font-bold'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {isSelected ? '✓ ' : '+ '}
+                        {preset}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Add custom tag (e.g. Earnings, Breakout, Reversal)..."
+                    value={customTagInput}
+                    onChange={(e) => setCustomTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddCustomTag();
+                      }
+                    }}
+                    className="flex-1 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCustomTag}
+                    className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700"
+                  >
+                    Add Tag
+                  </button>
+                </div>
+
+                {selectedTags.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                    <span className="text-[11px] text-slate-500 font-medium">Applied:</span>
+                    {selectedTags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 text-[11px] font-mono bg-slate-950 text-slate-200 px-2 py-0.5 rounded border border-slate-800"
+                      >
+                        #{tag}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleTag(tag)}
+                          className="text-slate-500 hover:text-rose-400 font-bold text-xs"
+                          title={`Remove #${tag}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">

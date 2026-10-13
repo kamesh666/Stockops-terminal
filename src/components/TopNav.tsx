@@ -43,6 +43,14 @@ export const TopNav: React.FC<TopNavProps> = ({
           Auto Scanner
         </button>
         <button
+          onClick={() => onTabChange('master-algo')}
+          className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 ${
+            activeTab === 'master-algo' ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400' : ''
+          }`}
+        >
+          Master Algo
+        </button>
+        <button
           onClick={() => onTabChange('algo-signals')}
           className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 ${
             activeTab === 'algo-signals' ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400' : ''

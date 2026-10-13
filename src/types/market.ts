@@ -137,6 +137,20 @@ export interface AutomatedSetup {
   timestamp: string;
 }
 
+export type PresetTradeTag =
+  | 'Earnings'
+  | 'Breakout'
+  | 'Reversal'
+  | 'Momentum'
+  | 'VWAP Bounce'
+  | 'Theta Decay'
+  | 'Golden Cross'
+  | 'Squeeze Fired'
+  | 'Support Retest'
+  | 'AVWAP Defense'
+  | 'Gap Fill'
+  | 'Expiry Play';
+
 export interface TradePlaybookEntry {
   id: string;
   symbol: string;
@@ -153,6 +167,7 @@ export interface TradePlaybookEntry {
   currentPnL: number;
   emotion: 'Disciplined' | 'Cautious' | 'Aggressive' | 'Neutral';
   lesson: string;
+  tags?: string[];
 }
 
 export interface BacktestTrade {
@@ -238,5 +253,53 @@ export interface AlgoSignal {
   checklist: AlgoFactorCheck[];
   timestamp: string;
 }
+
+export interface InstitutionalPillarState {
+  pillarName: string;
+  sourceAuthority: 'TrendSpider' | 'CMC Markets' | 'TradingComputers' | 'Investopedia';
+  metricLabel: string;
+  metricValue: string;
+  status: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'SQUEEZE_ALERT';
+  score: number; // 0 - 100
+  insight: string;
+}
+
+export interface MasterAlgoSignal {
+  id: string;
+  symbol: string;
+  stockName: string;
+  underlyingSpot: number;
+  tradeAction: string;
+  optionType: 'CE' | 'PE';
+  strike: number;
+  expiry: string;
+  optionLtp: number;
+  timeframe: '5m Scalp' | '15m Momentum' | '1D Positional';
+  masterConfidenceScore: number;
+  entryPrice: number;
+  hardStopLoss: number;
+  trailingAtrStop: number;
+  target1: number;
+  target2: number;
+  target3: number;
+  riskReward: string;
+  avwapValue: number;
+  squeezeStatus: 'FIRING_LONG' | 'FIRING_SHORT' | 'SQUEEZE_COMPRESSION' | 'NO_SQUEEZE';
+  ichimokuState: 'KUMO_BREAKOUT_BULL' | 'KUMO_BREAKDOWN_BEAR' | 'INSIDE_CLOUD';
+  fibRetestLevel: number;
+  volumePoc: number;
+  gammaRiskFactor: 'HIGH_GAMMA_SURGE' | 'STABLE_DELTA' | 'THETA_DOMINANT';
+  invalidationLevel: string;
+  capitalSizing: {
+    recommendedLots: number;
+    shares: number;
+    capitalRequired: number;
+    maxRiskAmount: number;
+    expectedGain: number;
+  };
+  pillars: InstitutionalPillarState[];
+  timestamp: string;
+}
+
 
 
